@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import gym
-import tensorflow as tf
 import numpy as np
-from critic_network import CriticNetwork
+import tensorflow as tf
+
 from actor_network_bn import ActorNetwork
+from critic_network import CriticNetwork
 from replay_buffer import ReplayBuffer
 
 REPLAY_BUFFER_SIZE = 100000
@@ -19,7 +19,9 @@ class DDPG:
         self.time_step = 0
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.sess = tf.InteractiveSession()
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        self.sess = tf.Session(config=config)
 
         self.actor_network = ActorNetwork(self.sess, self.state_dim, self.action_dim)
         self.critic_network = CriticNetwork(self.sess, self.state_dim, self.action_dim)
@@ -64,9 +66,9 @@ class DDPG:
 
         return action
 
-    def perceive(self,state,action,reward,next_state,done):
+    def perceive(self, state, action, reward, next_state, done):
         # Store transition (s_t,a_t,r_t,s_{t+1}) in replay buffer
-        self.replay_buffer.add(state,action,reward,next_state,done)
+        self.replay_buffer.add(state, action, reward, next_state, done)
         if self.replay_buffer.count() == REPLAY_START_SIZE:
             print('\n---------------Start training---------------')
         # Store transitions to replay start size then start training
@@ -79,13 +81,3 @@ class DDPG:
             self.critic_network.save_network(self.time_step)
 
         return self.time_step
-
-
-
-
-
-
-
-
-
-

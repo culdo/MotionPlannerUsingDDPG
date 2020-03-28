@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 import rospy
-import gym
-import gym_gazebo
-import numpy as np
-import tensorflow as tf
+
 from ddpg import *
 from environment import Env
 
@@ -55,7 +52,7 @@ def main():
                     avg_reward = total_reward / 10000
                     print('Average_reward = ', avg_reward)
                     avg_reward_his.append(round(avg_reward, 2))
-                    print('Average Reward:',avg_reward_his)
+                    print('Average Reward:', avg_reward_his)
                     total_reward = 0
 
                 if time_step % 5 == 0 and time_step > exploration_decay_start_step:
@@ -88,7 +85,6 @@ def main():
                 state = state_
                 one_round_step += 1
 
-
                 if arrive:
                     print('Step: %3i' % one_round_step, '| Arrive!!!')
                     one_round_step = 0
@@ -99,4 +95,4 @@ def main():
 
 
 if __name__ == '__main__':
-     main()
+    main()

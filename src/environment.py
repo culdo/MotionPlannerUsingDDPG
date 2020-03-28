@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-import os
-import rospy
-import numpy as np
 import math
-from math import pi
+import os
 import random
 
-from geometry_msgs.msg import Twist, Point, Pose
-from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import Odometry
-from std_srvs.srv import Empty
+import numpy as np
+import rospy
 from gazebo_msgs.srv import SpawnModel, DeleteModel
+from geometry_msgs.msg import Twist, Pose
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
+from std_srvs.srv import Empty
 
 diagonal_dis = math.sqrt(2) * (3.6 + 3.8)
 goal_model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', '..', 'turtlebot3_simulations',
                               'turtlebot3_gazebo', 'models', 'Target', 'model.sdf')
 
 
-class Env():
+class Env:
     def __init__(self, is_training):
         self.position = Pose()
         self.goal_position = Pose()
@@ -37,7 +36,8 @@ class Env():
             self.threshold_arrive = 0.4
 
     def getGoalDistace(self):
-        goal_distance = math.hypot(self.goal_position.position.x - self.position.x, self.goal_position.position.y - self.position.y)
+        goal_distance = math.hypot(self.goal_position.position.x - self.position.x,
+                                   self.goal_position.position.y - self.position.y)
         self.past_distance = goal_distance
 
         return goal_distance
@@ -49,9 +49,9 @@ class Env():
         yaw = round(math.degrees(math.atan2(2 * (q_x * q_y + q_w * q_z), 1 - 2 * (q_y * q_y + q_z * q_z))))
 
         if yaw >= 0:
-             yaw = yaw
+            yaw = yaw
         else:
-             yaw = yaw + 360
+            yaw = yaw + 360
 
         rel_dis_x = round(self.goal_position.position.x - self.position.x, 1)
         rel_dis_y = round(self.goal_position.position.y - self.position.y, 1)
@@ -106,7 +106,8 @@ class Env():
         if min_range > min(scan_range) > 0:
             done = True
 
-        current_distance = math.hypot(self.goal_position.position.x - self.position.x, self.goal_position.position.y - self.position.y)
+        current_distance = math.hypot(self.goal_position.position.x - self.position.x,
+                                      self.goal_position.position.y - self.position.y)
         if current_distance <= self.threshold_arrive:
             # done = True
             arrive = True
@@ -114,10 +115,11 @@ class Env():
         return scan_range, current_distance, yaw, rel_theta, diff_angle, done, arrive
 
     def setReward(self, done, arrive):
-        current_distance = math.hypot(self.goal_position.position.x - self.position.x, self.goal_position.position.y - self.position.y)
+        current_distance = math.hypot(self.goal_position.position.x - self.position.x,
+                                      self.goal_position.position.y - self.position.y)
         distance_rate = (self.past_distance - current_distance)
 
-        reward = 500.*distance_rate
+        reward = 500. * distance_rate
         self.past_distance = current_distance
 
         if done:
