@@ -10,8 +10,6 @@ LAYER2_SIZE = 300
 LEARNING_RATE = 0.0001
 TAU = 0.001
 
-model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'actor')
-
 
 class ActorNetwork:
     def __init__(self, sess, state_dim, action_dim):
@@ -31,7 +29,6 @@ class ActorNetwork:
         self.sess.run(tf.initialize_all_variables())
 
         self.update_target()
-        self.load_network()
 
     def create_training_method(self):
         self.q_gradient_input = tf.placeholder("float", [None, self.action_dim])
@@ -123,16 +120,3 @@ class ActorNetwork:
                        lambda: tf.contrib.layers.batch_norm(x, activation_fn=activation, center=True, scale=True,
                                                             updates_collections=None, is_training=False, reuse=True,
                                                             scope=scope_bn, decay=0.9, epsilon=1e-5))
-
-    def load_network(self):
-        self.saver = tf.train.Saver(save_relative_paths=True)
-        checkpoint = tf.train.get_checkpoint_state(model_dir)
-        if checkpoint and checkpoint.model_checkpoint_path:
-            self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
-            print("Successfully loaded actoe network")
-        else:
-            print("Could not find old network weights")
-
-    def save_network(self, time_step):
-        print('save actor-network...', time_step)
-        self.saver.save(self.sess, model_dir + 'actor-network', global_step=time_step)

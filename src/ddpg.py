@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import os
+
 import numpy as np
 import tensorflow as tf
 
@@ -11,6 +13,7 @@ REPLAY_START_SIZE = 10000
 BATCH_SIZE = 128
 GAMMA = 0.99
 
+model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'actor')
 
 class DDPG:
     def __init__(self, env, state_dim, action_dim):
@@ -25,9 +28,24 @@ class DDPG:
 
         self.actor_network = ActorNetwork(self.sess, self.state_dim, self.action_dim)
         self.critic_network = CriticNetwork(self.sess, self.state_dim, self.action_dim)
+        self._load_network()
 
         # initialize replay buffer
         self.replay_buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
+
+    def _load_network(self):
+        self.saver = tf.train.Saver(max_to_keep=1)
+        checkpoint = tf.train.get_checkpoint_state(model_dir)
+        if checkpoint and checkpoint.model_checkpoint_path:
+            self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
+            print("Successfully loaded network")
+        else:
+            print("Could not find old network weights")
+
+    def _save_network(self, time_step):
+        print('save DDPG network...', time_step)
+        path = os.path.join(model_dir, "DDPG")
+        self.saver.save(self.sess, path, global_step=time_step)
 
     def train(self):
         minibatch = self.replay_buffer.get_batch(BATCH_SIZE)
@@ -77,7 +95,6 @@ class DDPG:
             self.train()
 
         if self.time_step % 10000 == 0 and self.time_step > 0:
-            self.actor_network.save_network(self.time_step)
-            self.critic_network.save_network(self.time_step)
+            self._save_network(self.time_step)
 
         return self.time_step

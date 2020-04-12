@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>project</name>
+  <name>tb3_ddpg_localization</name>
   <version>0.0.0</version>
   <description>Reinforcement learnings with DDPG</description>
   <maintainer email="dranaju@gmail.com">Dranaju</maintainer>

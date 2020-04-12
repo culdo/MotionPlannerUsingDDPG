@@ -12,8 +12,7 @@ from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Empty
 
 diagonal_dis = math.sqrt(2) * (3.6 + 3.8)
-goal_model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', '..', 'turtlebot3_simulations',
-                              'turtlebot3_gazebo', 'models', 'Target', 'model.sdf')
+goal_model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', 'gz_models', 'Target', 'model.sdf')
 
 
 class Env:
@@ -77,10 +76,7 @@ class Env:
 
         diff_angle = abs(rel_theta - yaw)
 
-        if diff_angle <= 180:
-            diff_angle = round(diff_angle, 2)
-        else:
-            diff_angle = round(360 - diff_angle, 2)
+        diff_angle = round(diff_angle, 2)
 
         self.rel_theta = rel_theta
         self.yaw = yaw
@@ -95,13 +91,13 @@ class Env:
         done = False
         arrive = False
 
-        for i in range(len(scan.ranges)):
-            if scan.ranges[i] == float('Inf'):
+        for range in scan.ranges:
+            if range == float('Inf'):
                 scan_range.append(3.5)
-            elif np.isnan(scan.ranges[i]):
+            elif np.isnan(range):
                 scan_range.append(0)
             else:
-                scan_range.append(scan.ranges[i])
+                scan_range.append(range)
 
         if min_range > min(scan_range) > 0:
             done = True
@@ -172,7 +168,7 @@ class Env:
         for pa in past_action:
             state.append(pa)
 
-        state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 180]
+        state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 360]
         reward = self.setReward(done, arrive)
 
         return np.asarray(state), reward, done, arrive
@@ -220,6 +216,6 @@ class Env:
         state.append(0)
         state.append(0)
 
-        state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 180]
+        state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 360]
 
         return np.asarray(state)

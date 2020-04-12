@@ -25,10 +25,9 @@ class CriticNetwork:
         self.target_update = self.create_target_q_network(state_dim, action_dim, self.net)
 
         self.create_training_method()
-        self.sess.run(tf.initialize_all_variables())
+        self.sess.run(tf.global_variables_initializer)
 
         self.update_target()
-        self.load_network()
 
     def create_training_method(self):
         self.y_input = tf.placeholder("float", [None, 1])
@@ -94,16 +93,3 @@ class CriticNetwork:
     # f fan-in size
     def variable(self, shape, f):
         return tf.Variable(tf.random_uniform(shape, -1 / math.sqrt(f), 1 / math.sqrt(f)))
-
-    def load_network(self):
-        self.saver = tf.train.Saver()
-        checkpoint = tf.train.get_checkpoint_state(model_dir)
-        if checkpoint and checkpoint.model_checkpoint_path:
-            self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
-            print("Successfully loaded critic network")
-        else:
-            print("Could not find old network weights")
-
-    def save_network(self, time_step):
-        print('save critic-network...', time_step)
-        self.saver.save(self.sess, model_dir + 'critic-network', global_step=time_step)

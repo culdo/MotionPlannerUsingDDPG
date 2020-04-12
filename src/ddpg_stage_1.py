@@ -5,7 +5,7 @@ from ddpg import *
 from environment import Env
 
 exploration_decay_start_step = 50000
-state_dim = 16
+state_dim = 366
 action_dim = 2
 action_linear_max = 0.25  # m/s
 action_angular_max = 0.5  # rad/s
