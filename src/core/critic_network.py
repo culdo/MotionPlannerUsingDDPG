@@ -9,8 +9,6 @@ LAYER2_SIZE = 300
 LEARNING_RATE = 0.0001
 TAU = 0.001
 
-model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'critic')
-
 
 class CriticNetwork:
     def __init__(self, sess, state_dim, action_dim):
@@ -25,7 +23,7 @@ class CriticNetwork:
         self.target_update = self.create_target_q_network(state_dim, action_dim, self.net)
 
         self.create_training_method()
-        self.sess.run(tf.global_variables_initializer)
+        self.sess.run(tf.global_variables_initializer())
 
         self.update_target()
 

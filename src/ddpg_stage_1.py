@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import rospy
 
-from ddpg import *
+from core.ddpg import *
 from environment import Env
 
 exploration_decay_start_step = 50000
@@ -9,7 +9,7 @@ state_dim = 366
 action_dim = 2
 action_linear_max = 0.25  # m/s
 action_angular_max = 0.5  # rad/s
-is_training = False
+is_training = True
 
 
 def main():
@@ -65,6 +65,7 @@ def main():
                 if arrive:
                     print('Step: %3i' % one_round_step, '| Var: %.2f' % var, '| Time step: %i' % time_step, '|', result)
                     one_round_step = 0
+                    env.arrive_reset()
 
                 if done or one_round_step >= 500:
                     print('Step: %3i' % one_round_step, '| Var: %.2f' % var, '| Time step: %i' % time_step, '|', result)

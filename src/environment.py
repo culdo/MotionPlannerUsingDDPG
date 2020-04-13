@@ -5,43 +5,41 @@ import random
 
 import numpy as np
 import rospy
-from gazebo_msgs.srv import SpawnModel, DeleteModel
 from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Odometry
+from ros_gazebo import Gazebo, dynamic_recfg
 from sensor_msgs.msg import LaserScan
-from std_srvs.srv import Empty
 
 diagonal_dis = math.sqrt(2) * (3.6 + 3.8)
 goal_model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', 'gz_models', 'Target', 'model.sdf')
 
 
-class Env:
+class Env(Gazebo):
     def __init__(self, is_training):
+        super().__init__()
+
+        # Make simulation faster.
+        dynamic_recfg()
+
+        self.goal_distance = None
+
         self.position = Pose()
         self.goal_position = Pose()
         self.goal_position.position.x = 0.
         self.goal_position.position.y = 0.
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=10)
-        self.sub_odom = rospy.Subscriber('odom', Odometry, self.getOdometry)
-        self.reset_proxy = rospy.ServiceProxy('gazebo/reset_simulation', Empty)
-        self.unpause_proxy = rospy.ServiceProxy('gazebo/unpause_physics', Empty)
-        self.pause_proxy = rospy.ServiceProxy('gazebo/pause_physics', Empty)
-        self.goal = rospy.ServiceProxy('/gazebo/spawn_sdf_model', SpawnModel)
-        self.del_model = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
+        self.sub_odom = rospy.Subscriber('odom', Odometry, self._get_odometry)
         self.past_distance = 0.
         if is_training:
             self.threshold_arrive = 0.2
         else:
             self.threshold_arrive = 0.4
 
-    def getGoalDistace(self):
-        goal_distance = math.hypot(self.goal_position.position.x - self.position.x,
-                                   self.goal_position.position.y - self.position.y)
-        self.past_distance = goal_distance
+    def _set_goal_distance(self):
+        self.goal_distance = self._get_distance()
+        self.past_distance = self.goal_distance
 
-        return goal_distance
-
-    def getOdometry(self, odom):
+    def _get_odometry(self, odom):
         self.position = odom.pose.pose.position
         orientation = odom.pose.pose.orientation
         q_x, q_y, q_z, q_w = orientation.x, orientation.y, orientation.z, orientation.w
@@ -82,37 +80,40 @@ class Env:
         self.yaw = yaw
         self.diff_angle = diff_angle
 
-    def getState(self, scan):
+    def _get_state(self, scan):
         scan_range = []
         yaw = self.yaw
         rel_theta = self.rel_theta
         diff_angle = self.diff_angle
         min_range = 0.2
-        done = False
+        collision = False
         arrive = False
 
-        for range in scan.ranges:
-            if range == float('Inf'):
+        for laser_range in scan.ranges:
+            if laser_range == float('Inf'):
                 scan_range.append(3.5)
-            elif np.isnan(range):
+            elif np.isnan(laser_range):
                 scan_range.append(0)
             else:
-                scan_range.append(range)
+                scan_range.append(laser_range)
 
         if min_range > min(scan_range) > 0:
-            done = True
+            collision = True
 
-        current_distance = math.hypot(self.goal_position.position.x - self.position.x,
-                                      self.goal_position.position.y - self.position.y)
+        current_distance = self._get_distance()
         if current_distance <= self.threshold_arrive:
             # done = True
             arrive = True
 
-        return scan_range, current_distance, yaw, rel_theta, diff_angle, done, arrive
+        return scan_range, current_distance, yaw, rel_theta, diff_angle, collision, arrive
 
-    def setReward(self, done, arrive):
+    def _get_distance(self):
         current_distance = math.hypot(self.goal_position.position.x - self.position.x,
                                       self.goal_position.position.y - self.position.y)
+        return current_distance
+
+    def _set_reward(self, done, arrive):
+        current_distance = self._get_distance()
         distance_rate = (self.past_distance - current_distance)
 
         reward = 500. * distance_rate
@@ -125,26 +126,13 @@ class Env:
         if arrive:
             reward = 120.
             self.pub_cmd_vel.publish(Twist())
-            rospy.wait_for_service('/gazebo/delete_model')
-            self.del_model('target')
-
-            # Build the target
-            rospy.wait_for_service('/gazebo/spawn_sdf_model')
-            try:
-                goal_urdf = open(goal_model_dir, "r").read()
-                target = SpawnModel
-                target.model_name = 'target'  # the same with sdf name
-                target.model_xml = goal_urdf
-                self.goal_position.position.x = random.uniform(-3.6, 3.6)
-                self.goal_position.position.y = random.uniform(-3.6, 3.6)
-                self.goal(target.model_name, target.model_xml, 'namespace', self.goal_position, 'world')
-            except (rospy.ServiceException) as e:
-                print("/gazebo/failed to build the target")
-            rospy.wait_for_service('/gazebo/unpause_physics')
-            self.goal_distance = self.getGoalDistace()
-            arrive = False
+            self.delete_model("target")
 
         return reward
+
+    def arrive_reset(self):
+        self._spawn_target()
+        self._set_goal_distance()
 
     def step(self, action, past_action):
         linear_vel = action[0]
@@ -155,63 +143,38 @@ class Env:
         vel_cmd.angular.z = ang_vel
         self.pub_cmd_vel.publish(vel_cmd)
 
-        data = None
-        while data is None:
-            try:
-                data = rospy.wait_for_message('scan', LaserScan, timeout=5)
-            except:
-                pass
-
-        state, rel_dis, yaw, rel_theta, diff_angle, done, arrive = self.getState(data)
-        state = [i / 3.5 for i in state]
+        arrive, diff_angle, done, rel_dis, rel_theta, state, yaw = self._scan()
 
         for pa in past_action:
             state.append(pa)
 
         state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 360]
-        reward = self.setReward(done, arrive)
+        reward = self._set_reward(done, arrive)
 
         return np.asarray(state), reward, done, arrive
 
-    def reset(self):
-        # Reset the env #
-        rospy.wait_for_service('/gazebo/delete_model')
-        self.del_model('target')
-
-        rospy.wait_for_service('gazebo/reset_simulation')
-        try:
-            self.reset_proxy()
-        except (rospy.ServiceException) as e:
-            print("gazebo/reset_simulation service call failed")
-
-        # Build the targetz
-        rospy.wait_for_service('/gazebo/spawn_sdf_model')
-        try:
-            goal_urdf = open(goal_model_dir, "r").read()
-            target = SpawnModel
-            target.model_name = 'target'  # the same with sdf name
-            target.model_xml = goal_urdf
-            self.goal_position.position.x = random.uniform(-3.6, 3.6)
-            self.goal_position.position.y = random.uniform(-3.6, 3.6)
-
-            # if -0.3 < self.goal_position.position.x < 0.3 and -0.3 < self.goal_position.position.y < 0.3:
-            #     self.goal_position.position.x += 1
-            #     self.goal_position.position.y += 1
-
-            self.goal(target.model_name, target.model_xml, 'namespace', self.goal_position, 'world')
-        except (rospy.ServiceException) as e:
-            print("/gazebo/failed to build the target")
-        rospy.wait_for_service('/gazebo/unpause_physics')
+    def _scan(self):
         data = None
         while data is None:
             try:
                 data = rospy.wait_for_message('scan', LaserScan, timeout=5)
-            except:
+            except rospy.ROSException:
                 pass
-
-        self.goal_distance = self.getGoalDistace()
-        state, rel_dis, yaw, rel_theta, diff_angle, done, arrive = self.getState(data)
+        state, rel_dis, yaw, rel_theta, diff_angle, done, arrive = self._get_state(data)
         state = [i / 3.5 for i in state]
+        return arrive, diff_angle, done, rel_dis, rel_theta, state, yaw
+
+    def reset(self):
+        # Reset the env #
+        self.delete_model('target')
+
+        self.reset_world()
+
+        # Build the targetz
+        self._spawn_target()
+
+        arrive, diff_angle, done, rel_dis, rel_theta, state, yaw = self._scan()
+        self._set_goal_distance()
 
         state.append(0)
         state.append(0)
@@ -219,3 +182,11 @@ class Env:
         state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 360]
 
         return np.asarray(state)
+
+    def _spawn_target(self):
+        with open(goal_model_dir, "r") as f:
+            goal_sdf = f.read()
+        self.goal_position.position.x = random.uniform(-3.6, 3.6)
+        self.goal_position.position.y = random.uniform(-3.6, 3.6)
+        self.spawn_sdf_model("target", goal_sdf, self.goal_position)
+        self.unpause_physics()
