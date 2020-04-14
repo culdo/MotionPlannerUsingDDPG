@@ -9,7 +9,7 @@ state_dim = 366
 action_dim = 2
 action_linear_max = 0.25  # m/s
 action_angular_max = 0.5  # rad/s
-is_training = True
+is_training = False
 
 
 def main():
@@ -36,13 +36,8 @@ def main():
                 a[0] = np.clip(np.random.normal(a[0], var), 0., 1.)
                 a[1] = np.clip(np.random.normal(a[1], var), -0.5, 0.5)
 
-                state_, r, done, arrive = env.step(a, past_action)
-                time_step = agent.perceive(state, a, r, state_, done)
-
-                if arrive:
-                    result = 'Success'
-                else:
-                    result = 'Fail'
+                state_, r, collision, arrive = env.step(a, past_action)
+                time_step = agent.perceive(state, a, r, state_, collision)
 
                 if time_step > 0:
                     total_reward += r
@@ -62,13 +57,16 @@ def main():
                 state = state_
                 one_round_step += 1
 
+                result = 'Step: %3i | Var: %.2f | Time step: %i |' % (one_round_step, var, time_step)
                 if arrive:
-                    print('Step: %3i' % one_round_step, '| Var: %.2f' % var, '| Time step: %i' % time_step, '|', result)
+                    print(result, 'Success')
                     one_round_step = 0
                     env.arrive_reset()
-
-                if done or one_round_step >= 500:
-                    print('Step: %3i' % one_round_step, '| Var: %.2f' % var, '| Time step: %i' % time_step, '|', result)
+                elif collision:
+                    print(result, 'Collision')
+                    break
+                elif one_round_step >= 500:
+                    print(result, 'Failed')
                     break
 
     else:
@@ -81,7 +79,7 @@ def main():
                 a = agent.action(state)
                 a[0] = np.clip(a[0], 0., 1.)
                 a[1] = np.clip(a[1], -0.5, 0.5)
-                state_, r, done, arrive = env.step(a, past_action)
+                state_, r, collision, arrive = env.step(a, past_action)
                 past_action = a
                 state = state_
                 one_round_step += 1
@@ -90,8 +88,11 @@ def main():
                     print('Step: %3i' % one_round_step, '| Arrive!!!')
                     one_round_step = 0
 
-                if done:
+                if collision:
                     print('Step: %3i' % one_round_step, '| Collision!!!')
+                    break
+                elif one_round_step >= 500:
+                    print('Step: %3i' % one_round_step, '| Failed!!!')
                     break
 
 

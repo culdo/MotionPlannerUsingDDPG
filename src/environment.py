@@ -30,6 +30,8 @@ class Env(Gazebo):
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=10)
         self.sub_odom = rospy.Subscriber('odom', Odometry, self._get_odometry)
         self.past_distance = 0.
+        with open(goal_model_dir, "r") as f:
+            self.goal_sdf = f.read()
         if is_training:
             self.threshold_arrive = 0.2
         else:
@@ -73,8 +75,12 @@ class Env(Gazebo):
         rel_theta = round(math.degrees(theta), 2)
 
         diff_angle = abs(rel_theta - yaw)
+        if diff_angle >= 360:
+            print(diff_angle)
 
         diff_angle = round(diff_angle, 2)
+        if diff_angle >= 360:
+            print(diff_angle)
 
         self.rel_theta = rel_theta
         self.yaw = yaw
@@ -92,8 +98,6 @@ class Env(Gazebo):
         for laser_range in scan.ranges:
             if laser_range == float('Inf'):
                 scan_range.append(3.5)
-            elif np.isnan(laser_range):
-                scan_range.append(0)
             else:
                 scan_range.append(laser_range)
 
@@ -102,7 +106,6 @@ class Env(Gazebo):
 
         current_distance = self._get_distance()
         if current_distance <= self.threshold_arrive:
-            # done = True
             arrive = True
 
         return scan_range, current_distance, yaw, rel_theta, diff_angle, collision, arrive
@@ -112,25 +115,24 @@ class Env(Gazebo):
                                       self.goal_position.position.y - self.position.y)
         return current_distance
 
-    def _set_reward(self, done, arrive):
+    def _set_reward(self, collision, arrive):
         current_distance = self._get_distance()
         distance_rate = (self.past_distance - current_distance)
 
         reward = 500. * distance_rate
         self.past_distance = current_distance
 
-        if done:
+        if collision:
             reward = -100.
-            self.pub_cmd_vel.publish(Twist())
-
-        if arrive:
+        elif arrive:
             reward = 120.
-            self.pub_cmd_vel.publish(Twist())
-            self.delete_model("target")
+
+        self.pub_cmd_vel.publish(Twist())
 
         return reward
 
     def arrive_reset(self):
+        self.delete_model("target")
         self._spawn_target()
         self._set_goal_distance()
 
@@ -143,39 +145,38 @@ class Env(Gazebo):
         vel_cmd.angular.z = ang_vel
         self.pub_cmd_vel.publish(vel_cmd)
 
-        arrive, diff_angle, done, rel_dis, rel_theta, state, yaw = self._scan()
+        arrive, diff_angle, collision, rel_dis, rel_theta, state, yaw = self._laser_scan()
 
         for pa in past_action:
             state.append(pa)
 
         state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 360]
-        reward = self._set_reward(done, arrive)
+        reward = self._set_reward(collision, arrive)
 
-        return np.asarray(state), reward, done, arrive
+        return np.asarray(state), reward, collision, arrive
 
-    def _scan(self):
-        data = None
-        while data is None:
+    def _laser_scan(self):
+        while True:
             try:
                 data = rospy.wait_for_message('scan', LaserScan, timeout=5)
+                break
             except rospy.ROSException:
                 pass
-        state, rel_dis, yaw, rel_theta, diff_angle, done, arrive = self._get_state(data)
+        state, rel_dis, yaw, rel_theta, diff_angle, collision, arrive = self._get_state(data)
         state = [i / 3.5 for i in state]
-        return arrive, diff_angle, done, rel_dis, rel_theta, state, yaw
+        return arrive, diff_angle, collision, rel_dis, rel_theta, state, yaw
 
     def reset(self):
-        # Reset the env #
         self.delete_model('target')
+        self.reset_simulation()
 
-        self.reset_world()
-
-        # Build the targetz
+        # Build the target
         self._spawn_target()
 
-        arrive, diff_angle, done, rel_dis, rel_theta, state, yaw = self._scan()
+        _, diff_angle, _, rel_dis, rel_theta, state, yaw = self._laser_scan()
         self._set_goal_distance()
 
+        # Add past action to states.
         state.append(0)
         state.append(0)
 
@@ -184,9 +185,7 @@ class Env(Gazebo):
         return np.asarray(state)
 
     def _spawn_target(self):
-        with open(goal_model_dir, "r") as f:
-            goal_sdf = f.read()
         self.goal_position.position.x = random.uniform(-3.6, 3.6)
         self.goal_position.position.y = random.uniform(-3.6, 3.6)
-        self.spawn_sdf_model("target", goal_sdf, self.goal_position)
-        self.unpause_physics()
+        self.spawn_sdf_model("target", self.goal_sdf, self.goal_position)
+        rospy.wait_for_service('/gazebo/unpause_physics')

@@ -93,6 +93,8 @@ class DDPG:
         if self.replay_buffer.count() > REPLAY_START_SIZE:
             self.time_step += 1
             self.train()
+        elif self.replay_buffer.count() % 500 == 0:
+            print("REPLAY_SIZE: %d" % self.replay_buffer.count())
 
         if self.time_step % 10000 == 0 and self.time_step > 0:
             self._save_network(self.time_step)
