@@ -10,9 +10,6 @@ from nav_msgs.msg import Odometry
 from ros_gazebo import Gazebo, dynamic_recfg
 from sensor_msgs.msg import LaserScan
 
-diagonal_dis = math.sqrt(2) * (3.6 + 3.8)
-goal_model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', 'gz_models', 'Target', 'model.sdf')
-
 
 class Env(Gazebo):
     def __init__(self, is_training):
@@ -21,8 +18,11 @@ class Env(Gazebo):
         # Make simulation faster.
         dynamic_recfg()
 
+        # Maybe max to 4
+        self.obstacle_num = 2
         self.goal_distance = None
 
+        self.diagonal_dis = math.sqrt(2) * (3.6 + 3.8)
         self.position = Pose()
         self.goal_position = Pose()
         self.goal_position.position.x = 0.
@@ -30,27 +30,45 @@ class Env(Gazebo):
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=10)
         self.sub_odom = rospy.Subscriber('odom', Odometry, self._get_odometry)
         self.past_distance = 0.
-        with open(goal_model_dir, "r") as f:
-            self.goal_sdf = f.read()
+
+        self._spawn_models()
+
         if is_training:
             self.threshold_arrive = 0.2
         else:
             self.threshold_arrive = 0.4
 
-    def _set_goal_distance(self):
-        self.goal_distance = self._get_distance()
-        self.past_distance = self.goal_distance
+    def _spawn_models(self):
+        model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], '..', 'gz_models')
+        goal_model = os.path.join(model_dir, 'target', 'model.sdf')
+
+        with open(goal_model, "r") as f:
+            goal_sdf = f.read()
+        self.spawn_sdf_model("target", goal_sdf, self.goal_position)
+        # Spawn obstacle boxes
+        # self._spawn_obs(model_dir)
+
+    def _spawn_obs(self, model_dir):
+        obstacle_model = os.path.join(model_dir, 'unit_box', 'model.sdf')
+        with open(obstacle_model, "r") as f:
+            obstacle_sdf = f.read()
+        box_pose = Pose()
+        box_pose.position.x = 3
+        box_pose.position.z = 1
+        for i in range(self.obstacle_num):
+            box_pose.position.y = i
+            self.spawn_sdf_model("unit_box_%d" % i, obstacle_sdf, box_pose)
 
     def _get_odometry(self, odom):
         self.position = odom.pose.pose.position
         orientation = odom.pose.pose.orientation
         q_x, q_y, q_z, q_w = orientation.x, orientation.y, orientation.z, orientation.w
-        yaw = round(math.degrees(math.atan2(2 * (q_x * q_y + q_w * q_z), 1 - 2 * (q_y * q_y + q_z * q_z))))
+        self.yaw = round(math.degrees(math.atan2(2 * (q_x * q_y + q_w * q_z), 1 - 2 * (q_y * q_y + q_z * q_z))))
 
-        if yaw >= 0:
-            yaw = yaw
+        if self.yaw >= 0:
+            self.yaw = self.yaw
         else:
-            yaw = yaw + 360
+            self.yaw = self.yaw + 360
 
         rel_dis_x = round(self.goal_position.position.x - self.position.x, 1)
         rel_dis_y = round(self.goal_position.position.y - self.position.y, 1)
@@ -72,69 +90,78 @@ class Env(Gazebo):
             theta = 0
         else:
             theta = math.pi
-        rel_theta = round(math.degrees(theta), 2)
+        self.rel_theta = round(math.degrees(theta), 2)
 
-        diff_angle = abs(rel_theta - yaw)
-        if diff_angle >= 360:
-            print(diff_angle)
-
-        diff_angle = round(diff_angle, 2)
-        if diff_angle >= 360:
-            print(diff_angle)
-
-        self.rel_theta = rel_theta
-        self.yaw = yaw
-        self.diff_angle = diff_angle
+        self.diff_angle = abs(self.rel_theta - self.yaw)
+        self.diff_angle = round(self.diff_angle, 2)
 
     def _get_state(self, scan):
-        scan_range = []
-        yaw = self.yaw
-        rel_theta = self.rel_theta
-        diff_angle = self.diff_angle
+        self.scan_range = []
         min_range = 0.2
-        collision = False
-        arrive = False
+        self.collision = False
+        self.arrive = False
 
         for laser_range in scan.ranges:
-            if laser_range == float('Inf'):
-                scan_range.append(3.5)
+            if laser_range == float('Inf') or laser_range == 0.0:
+                self.scan_range.append(3.5)
             else:
-                scan_range.append(laser_range)
+                self.scan_range.append(laser_range)
 
-        if min_range > min(scan_range) > 0:
-            collision = True
+        if min_range > min(self.scan_range) > 0:
+            self.collision = True
 
-        current_distance = self._get_distance()
-        if current_distance <= self.threshold_arrive:
-            arrive = True
-
-        return scan_range, current_distance, yaw, rel_theta, diff_angle, collision, arrive
+        self._get_distance()
+        if self.current_distance <= self.threshold_arrive:
+            self.arrive = True
 
     def _get_distance(self):
-        current_distance = math.hypot(self.goal_position.position.x - self.position.x,
-                                      self.goal_position.position.y - self.position.y)
-        return current_distance
+        self.current_distance = math.hypot(self.goal_position.position.x - self.position.x,
+                                           self.goal_position.position.y - self.position.y)
+        return self.current_distance
 
-    def _set_reward(self, collision, arrive):
-        current_distance = self._get_distance()
-        distance_rate = (self.past_distance - current_distance)
+    def _set_reward(self):
+        distance_rate = (self.past_distance - self.current_distance)
 
         reward = 500. * distance_rate
-        self.past_distance = current_distance
+        self.past_distance = self.current_distance
 
-        if collision:
+        if self.collision:
             reward = -100.
-        elif arrive:
+        elif self.arrive:
             reward = 120.
 
         self.pub_cmd_vel.publish(Twist())
 
         return reward
 
-    def arrive_reset(self):
-        self.delete_model("target")
-        self._spawn_target()
-        self._set_goal_distance()
+    def set_obstacle(self):
+        for i in range(self.obstacle_num):
+            pose = Pose()
+            goal_x = self.goal_position.position.x
+            goal_y = self.goal_position.position.y
+            tb3_x = self.position.x
+            tb3_y = self.position.y
+            while True:
+                box_x = random.uniform(-3.6, 3.6)
+                box_y = random.uniform(-3.6, 3.6)
+                if goal_x + 2.0 > box_x > goal_x - 2.0 and \
+                        goal_y + 2.0 > box_y > goal_y - 2.0 and \
+                        not goal_x + 0.5 > box_x > goal_x - 0.5 and \
+                        not goal_y + 0.5 > box_y > goal_y - 0.5 and \
+                        not tb3_x + 0.5 > box_x > tb3_x - 0.5 and \
+                        not tb3_y + 0.5 > box_y > tb3_y - 0.5:
+                    break
+            pose.position.x = box_x
+            pose.position.y = box_y
+            pose.position.z = 1.0
+            self.set_model_state("unit_box_%d" % i, pose)
+
+    def common_reset(self):
+        # Set the target
+        self.set_target()
+        # self.set_obstacle()
+        # First step we set current distance as past distance
+        self.past_distance = self._get_distance()
 
     def step(self, action, past_action):
         linear_vel = action[0]
@@ -145,15 +172,15 @@ class Env(Gazebo):
         vel_cmd.angular.z = ang_vel
         self.pub_cmd_vel.publish(vel_cmd)
 
-        arrive, diff_angle, collision, rel_dis, rel_theta, state, yaw = self._laser_scan()
+        self._laser_scan()
 
         for pa in past_action:
-            state.append(pa)
+            self.state.append(pa)
 
-        state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 360]
-        reward = self._set_reward(collision, arrive)
+        state = self._pack_state()
+        reward = self._set_reward()
 
-        return np.asarray(state), reward, collision, arrive
+        return np.asarray(state), reward, self.collision, self.arrive
 
     def _laser_scan(self):
         while True:
@@ -162,30 +189,27 @@ class Env(Gazebo):
                 break
             except rospy.ROSException:
                 pass
-        state, rel_dis, yaw, rel_theta, diff_angle, collision, arrive = self._get_state(data)
-        state = [i / 3.5 for i in state]
-        return arrive, diff_angle, collision, rel_dis, rel_theta, state, yaw
+        self._get_state(data)
+        self.state = [i / 3.5 for i in self.scan_range]
 
     def reset(self):
-        self.delete_model('target')
         self.reset_simulation()
+        self.common_reset()
 
-        # Build the target
-        self._spawn_target()
+        self._laser_scan()
 
-        _, diff_angle, _, rel_dis, rel_theta, state, yaw = self._laser_scan()
-        self._set_goal_distance()
+        # Add default past action (vel_cmd) to states.
+        self.state.extend([0, 0])
 
-        # Add past action to states.
-        state.append(0)
-        state.append(0)
-
-        state = state + [rel_dis / diagonal_dis, yaw / 360, rel_theta / 360, diff_angle / 360]
+        state = self._pack_state()
 
         return np.asarray(state)
 
-    def _spawn_target(self):
+    def _pack_state(self):
+        return self.state + [self.current_distance / self.diagonal_dis, self.yaw / 360, self.rel_theta / 360,
+                             self.diff_angle / 360]
+
+    def set_target(self):
         self.goal_position.position.x = random.uniform(-3.6, 3.6)
         self.goal_position.position.y = random.uniform(-3.6, 3.6)
-        self.spawn_sdf_model("target", self.goal_sdf, self.goal_position)
-        rospy.wait_for_service('/gazebo/unpause_physics')
+        self.set_model_state("target", self.goal_position)

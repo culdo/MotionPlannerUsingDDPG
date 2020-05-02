@@ -13,7 +13,7 @@ REPLAY_START_SIZE = 10000
 BATCH_SIZE = 128
 GAMMA = 0.99
 
-model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model')
+model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'with_obstacle')
 
 class DDPG:
     def __init__(self, env, state_dim, action_dim):
