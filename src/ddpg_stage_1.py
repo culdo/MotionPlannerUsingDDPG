@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import rospy
 import numpy as np
+from geometry_msgs.msg import Twist
+
 from core.ddpg import DDPG
 from environment import Env
 
@@ -99,10 +101,15 @@ class DDPGStage:
                     break
 
     def run(self):
-        if self.is_training:
-            self._train()
-        else:
-            self._evaluate()
+        self.env.goal_range["x"] = [-1, 1]
+        self.env.goal_range["y"] = [-1, 1]
+        try:
+            if self.is_training:
+                self._train()
+            else:
+                self._evaluate()
+        except KeyboardInterrupt:
+            self.env.pub_cmd_vel.publish(Twist())
 
 
 if __name__ == '__main__':
