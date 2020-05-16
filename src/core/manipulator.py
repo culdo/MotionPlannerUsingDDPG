@@ -34,18 +34,9 @@
 #
 # Author: Acorn Pooley, Mike Lautman
 
-## BEGIN_SUB_TUTORIAL imports
-##
-## To use the Python MoveIt! interfaces, we will import the `moveit_commander`_ namespace.
-## This namespace provides us with a `MoveGroupCommander`_ class, a `PlanningSceneInterface`_ class,
-## and a `RobotCommander`_ class. (More on these below)
-##
-## We also import `rospy`_ and some messages that we will use:
-##
-
 import copy
 import sys
-from math import pi
+import time
 
 import geometry_msgs.msg
 import moveit_commander
@@ -53,8 +44,6 @@ import moveit_msgs.msg
 import rospy
 from moveit_commander.conversions import pose_to_list
 
-
-## END_SUB_TUTORIAL
 
 def all_close(goal, actual, tolerance):
     """
@@ -67,6 +56,7 @@ def all_close(goal, actual, tolerance):
     all_equal = True
     if type(goal) is list:
         for index in range(len(goal)):
+            print(abs(actual[index] - goal[index]))
             if abs(actual[index] - goal[index]) > tolerance:
                 return False
 
@@ -79,11 +69,11 @@ def all_close(goal, actual, tolerance):
     return True
 
 
-class MoveGroupPythonIntefaceTutorial(object):
-    """MoveGroupPythonIntefaceTutorial"""
+class MoveGroup(object):
+    """MoveGroup"""
 
     def __init__(self):
-        super(MoveGroupPythonIntefaceTutorial, self).__init__()
+        super(MoveGroup, self).__init__()
 
         ## BEGIN_SUB_TUTORIAL setup
         ##
@@ -149,7 +139,7 @@ class MoveGroupPythonIntefaceTutorial(object):
         self.eef_link = eef_link
         self.group_names = group_names
 
-    def go_to_joint_state(self):
+    def go_to_joint_state(self, joint_goal):
         # Copy class variables to local variables to make the web tutorials more clear.
         # In practice, you should use the class variables directly unless you have a good
         # reason not to.
@@ -158,19 +148,9 @@ class MoveGroupPythonIntefaceTutorial(object):
         ## BEGIN_SUB_TUTORIAL plan_to_joint_state
         ##
         ## Planning to a Joint Goal
-        ## ^^^^^^^^^^^^^^^^^^^^^^^^
-        ## The Panda's zero configuration is at a `singularity <https://www.quora.com/Robotics-What-is-meant-by-kinematic-singularity>`_ so the first
-        ## thing we want to do is move it to a slightly better configuration.
-        # We can get the joint values from the group and adjust some of the values:
-        joint_goal = group.get_current_joint_values()
-        joint_goal[0] = 0
-        joint_goal[1] = -pi / 4
-        joint_goal[2] = 0
-        joint_goal[3] = -pi / 2
-
         # The go command can be called with joint values, poses, or without any
         # parameters if you have already set the pose or joint target for the group
-        group.go([0, 0, 0, 0], wait=True)
+        group.go(joint_goal, wait=True)
 
         # Calling ``stop()`` ensures that there is no residual movement
         group.stop()
@@ -180,8 +160,10 @@ class MoveGroupPythonIntefaceTutorial(object):
         # For testing:
         # Note that since this section of code will not be included in the tutorials
         # we use the class variable rather than the copied state variable
-        current_joints = self.group.get_current_joint_values()
-        return all_close(joint_goal, current_joints, 0.01)
+        while not all_close(joint_goal, self.group.get_current_joint_values(), 0.1):
+            time.sleep(0.01)
+        time.sleep(1)
+        print("Success moved.")
 
     def go_to_pose_goal(self):
         # Copy class variables to local variables to make the web tutorials more clear.
@@ -432,24 +414,3 @@ class MoveGroupPythonIntefaceTutorial(object):
 
         # We wait for the planning scene to update.
         return self.wait_for_state_update(box_is_attached=False, box_is_known=False, timeout=timeout)
-
-
-def main():
-    try:
-        # begin the tutorial by setting up the moveit_commander (press ctrl-d to exit)
-        tutorial = MoveGroupPythonIntefaceTutorial()
-
-        # execute a movement using a joint state goal
-        tutorial.go_to_joint_state()
-
-        # execute a movement using a pose goal
-        # tutorial.go_to_pose_goal()
-
-    except rospy.ROSInterruptException:
-        return
-    except KeyboardInterrupt:
-        return
-
-
-if __name__ == '__main__':
-    main()
