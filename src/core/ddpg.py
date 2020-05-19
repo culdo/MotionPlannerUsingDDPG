@@ -13,7 +13,7 @@ REPLAY_START_SIZE = 10000
 BATCH_SIZE = 128
 GAMMA = 0.99
 
-model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'with_obstacle')
+model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'new_odom')
 
 class DDPG:
     def __init__(self, env, state_dim, action_dim):
@@ -34,7 +34,7 @@ class DDPG:
         self.replay_buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
 
     def _load_network(self):
-        self.saver = tf.train.Saver(save_relative_paths=True, max_to_keep=1)
+        self.saver = tf.train.Saver(save_relative_paths=True, max_to_keep=5)
         checkpoint = tf.train.get_checkpoint_state(model_dir)
         if checkpoint and checkpoint.model_checkpoint_path:
             self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
@@ -96,7 +96,7 @@ class DDPG:
         elif self.replay_buffer.count() % 500 == 0:
             print("REPLAY_SIZE: %d" % self.replay_buffer.count())
 
-        if self.time_step % 10000 == 0 and self.time_step > 0:
+        if self.time_step % 100000 == 0 and self.time_step > 0:
             self._save_network(self.time_step)
 
         return self.time_step
