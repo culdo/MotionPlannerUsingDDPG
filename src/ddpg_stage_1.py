@@ -85,8 +85,8 @@ class DDPGStage:
 
     def _evaluate(self):
         print('Testing mode')
-        self.env.goal_range["x"] = [-1, 1]
-        self.env.goal_range["y"] = [-1, 1]
+        self.env.goal_range["x"] = [-1.5, 1.5]
+        self.env.goal_range["y"] = [-1.5, 1.5]
         while not rospy.is_shutdown():
             state = self.env.reset()
             one_round_step = 0

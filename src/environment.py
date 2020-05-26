@@ -13,8 +13,8 @@ from sensor_msgs.msg import LaserScan
 
 class Env(object):
     def __init__(self, is_training):
-        # matplotlib.rcParams.update({'font.size': 20})
-        # plt.figure(figsize=(12, 10))
+        matplotlib.rcParams.update({'font.size': 20})
+        plt.figure(figsize=(12, 10))
         plt.xlim(-3.6, 3.6)
         plt.ylim(-3.6, 3.6)
         plt.grid()
@@ -36,13 +36,12 @@ class Env(object):
         self.goal_pose.position.y = 0.
         self.pub_cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=10)
         _ = rospy.Subscriber('odom', Odometry, self._cb_odom)
-        _ = rospy.Subscriber('scan', LaserScan, self._cb_laser)
         self.past_distance = 0.
 
         if is_training:
-            self.threshold_arrive = 0.1
+            self.threshold_arrive = 0.2
         else:
-            self.threshold_arrive = 0.1
+            self.threshold_arrive = 0.2
 
     def _cb_odom(self, data):
         self.odom = data
@@ -87,27 +86,25 @@ class Env(object):
         self.diff_angle = abs(self.rel_theta - self.yaw)
         self.diff_angle = round(self.diff_angle, 2)
 
-    def _get_state(self):
+    def _get_state(self, scan):
         self.scan_range = []
         min_range = 0.2
         self.collision = False
         self.arrive = False
 
-        for laser_range in self._laser_data.ranges:
+        for laser_range in scan.ranges:
             if laser_range == float('Inf') or laser_range == 0.0:
                 self.scan_range.append(3.5)
             else:
                 self.scan_range.append(laser_range)
 
         if min_range > min(self.scan_range) > 0:
+            print(min(self.scan_range))
             self.collision = True
 
         self._get_distance()
         if self.current_distance <= self.threshold_arrive:
-            self.bonus = 1 / self.current_distance
             self.arrive = True
-
-        self.state = [i / 3.5 for i in self.scan_range]
 
     def _get_distance(self):
         self.current_distance = math.hypot(self.goal_pose.position.x - self.position.x,
@@ -123,9 +120,9 @@ class Env(object):
         if self.collision:
             reward = -100.
         elif self.arrive:
-            reward = 120. + self.bonus
+            reward = 120.
 
-        # self.pub_cmd_vel.publish(Twist())
+        self.pub_cmd_vel.publish(Twist())
 
         return reward
 
@@ -139,13 +136,11 @@ class Env(object):
         ang_vel = action[1]
 
         vel_cmd = Twist()
-        vel_cmd.linear.x = linear_vel / 2
+        vel_cmd.linear.x = linear_vel / 4
         vel_cmd.angular.z = ang_vel
         self.pub_cmd_vel.publish(vel_cmd)
 
-        # prev_time = rospy.get_time()
-        # while rospy.get_time() - prev_time < 0.5 and self.collision is False:
-        self._get_state()
+        self._laser_scan()
 
         for pa in past_action:
             self.state.append(pa)
@@ -155,8 +150,15 @@ class Env(object):
 
         return np.asarray(state), reward, self.collision, self.arrive
 
-    def _cb_laser(self, data):
-        self._laser_data = data
+    def _laser_scan(self):
+        while True:
+            try:
+                data = rospy.wait_for_message('scan', LaserScan, timeout=5)
+                break
+            except rospy.ROSException:
+                pass
+        self._get_state(data)
+        self.state = [i / 3.5 for i in self.scan_range]
 
     def reset(self):
         self.common_reset()
@@ -169,7 +171,7 @@ class Env(object):
         # First step we set current distance as past distance
         self.past_distance = self._get_distance()
 
-        self._get_state()
+        self._laser_scan()
 
         # Add default past action (vel_cmd) to states.
         self.state.extend([0, 0])
@@ -192,6 +194,6 @@ class Env(object):
     def set_target(self):
         self.goal_pose.position.x = random.uniform(*self.goal_range["x"])
         self.goal_pose.position.y = random.uniform(*self.goal_range["y"])
+        # self.goal_pose.position.x = 1.5
+        # self.goal_pose.position.y = 1.5
         plt.title("Goal_X: %.2f, Goal_Y: %.2f" % (self.goal_pose.position.x, self.goal_pose.position.y))
-        # self.goal_pose.position.x = 1
-        # self.goal_pose.position.y = 1
