@@ -13,10 +13,10 @@ REPLAY_START_SIZE = 10000
 BATCH_SIZE = 128
 GAMMA = 0.99
 
-model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'with_obstacle')
 
 class DDPG:
-    def __init__(self, env, state_dim, action_dim):
+    def __init__(self, model, env, state_dim, action_dim):
+        self.model_dir = model
         self.name = 'DDPG'
         self.environment = env
         self.time_step = 0
@@ -34,8 +34,8 @@ class DDPG:
         self.replay_buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
 
     def _load_network(self):
-        self.saver = tf.train.Saver(save_relative_paths=True, max_to_keep=1)
-        checkpoint = tf.train.get_checkpoint_state(model_dir)
+        self.saver = tf.train.Saver(save_relative_paths=True, max_to_keep=5)
+        checkpoint = tf.train.get_checkpoint_state(self.model_dir)
         if checkpoint and checkpoint.model_checkpoint_path:
             self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
             print("Successfully loaded network")
@@ -44,7 +44,7 @@ class DDPG:
 
     def _save_network(self, time_step):
         print('save DDPG network...', time_step)
-        path = os.path.join(model_dir, "DDPG")
+        path = os.path.join(self.model_dir, "DDPG")
         self.saver.save(self.sess, path, global_step=time_step)
 
     def train(self):
@@ -96,7 +96,7 @@ class DDPG:
         elif self.replay_buffer.count() % 500 == 0:
             print("REPLAY_SIZE: %d" % self.replay_buffer.count())
 
-        if self.time_step % 10000 == 0 and self.time_step > 0:
+        if self.time_step % 100000 == 0 and self.time_step > 0:
             self._save_network(self.time_step)
 
         return self.time_step
