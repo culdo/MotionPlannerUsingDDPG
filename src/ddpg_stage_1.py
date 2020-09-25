@@ -13,7 +13,8 @@ from sim_env import SimEnv
 
 
 class DDPGStage:
-    def __init__(self, model, is_training=False):
+    def __init__(self, model, is_training=False, var=1.):
+        self.max_step = 200
         self.exploration_decay_start_step = 50000
         state_dim = 366
         action_dim = 2
@@ -35,11 +36,12 @@ class DDPGStage:
         print('Action Dimensions: ' + str(action_dim))
         print('Action Max: ' + str(self.action_linear_max) + ' m/s and ' + str(self.action_angular_max) + ' rad/s')
 
+        self.var = var
+
     def _train(self):
         print('Training mode')
         avg_reward_his = []
         total_reward = 0
-        var = 1.
 
         while not rospy.is_shutdown():
             state = self.env.reset()
@@ -47,8 +49,8 @@ class DDPGStage:
 
             while not rospy.is_shutdown():
                 a = self.agent.action(state)
-                a[0] = np.clip(np.random.normal(a[0], var), 0., 1.)
-                a[1] = np.clip(np.random.normal(a[1], var), -0.5, 0.5)
+                a[0] = np.clip(np.random.normal(a[0], self.var), 0., 1.)
+                a[1] = np.clip(np.random.normal(a[1], self.var), -0.5, 0.5)
 
                 state_, r, collision, arrive = self.env.step(a, self.past_action)
                 time_step = self.agent.perceive(state, a, r, state_, collision)
@@ -64,14 +66,15 @@ class DDPGStage:
                     print('Average Reward:', avg_reward_his)
                     total_reward = 0
 
-                if time_step % 5 == 0 and time_step > self.exploration_decay_start_step and var > 0.2:
-                    var *= 0.9999
+                if time_step % 5 == 0 and time_step > self.exploration_decay_start_step and self.var > 0.1:
+                    self.var *= 0.9999
 
                 self.past_action = a
                 state = state_
                 one_round_step += 1
 
-                result = 'Step: %3i | Reward: %.2f | Var: %.2f | Time step: %i |' % (one_round_step, r, var, time_step)
+                plt.title("STEP %d, Reward: %.2f" % (one_round_step, r))
+                result = 'Step: %3i | Reward: %.2f | Var: %.2f | Time step: %i |' % (one_round_step, r, self.var, time_step)
                 if arrive:
                     print(result, 'Success')
                     one_round_step = 0
@@ -79,7 +82,7 @@ class DDPGStage:
                 elif collision:
                     print(result, 'Collision')
                     break
-                elif one_round_step >= 500:
+                elif one_round_step >= self.max_step:
                     print(result, 'Failed')
                     break
 
@@ -101,16 +104,18 @@ class DDPGStage:
                 state = state_
                 one_round_step += 1
 
-                result = 'Step: %3i |' % one_round_step
+                plt.title("STEP %d, Reward: %.2f" % (one_round_step, r))
+                result = 'Step: %3i | Reward: %.2f | Var: %.2f |' % (
+                one_round_step, r, self.var)
                 if arrive:
                     print(result, 'Success')
                     one_round_step = 0
                     self.env.common_reset()
-                    input()
+                    # input()
                 elif collision:
                     print(result, 'Collision')
                     break
-                elif one_round_step >= 500:
+                elif one_round_step >= self.max_step:
                     print(result, 'Failed')
                     break
 
@@ -127,6 +132,6 @@ class DDPGStage:
 
 
 if __name__ == '__main__':
-    model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'with_obstacle')
-    process = DDPGStage(model_dir, is_training=False)
+    model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'accuracy')
+    process = DDPGStage(model_dir, is_training=False, var=0.1)
     process.run()

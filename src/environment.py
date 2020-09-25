@@ -40,9 +40,9 @@ class Env(object):
         self.past_distance = 0.
 
         if is_training:
-            self.threshold_arrive = 0.1
+            self.threshold_arrive = 0.2
         else:
-            self.threshold_arrive = 0.1
+            self.threshold_arrive = 0.2
 
     def _cb_odom(self, data):
         self.odom = data
@@ -104,8 +104,8 @@ class Env(object):
 
         self._get_distance()
         if self.current_distance <= self.threshold_arrive:
-            self.bonus = 1 / self.current_distance
             self.arrive = True
+        self.bonus = 1 / self.current_distance
 
         self.state = [i / 3.5 for i in self.scan_range]
 
@@ -121,11 +121,9 @@ class Env(object):
         self.past_distance = self.current_distance
 
         if self.collision:
-            reward = -100.
+            reward += -100.
         elif self.arrive:
-            reward = 120. + self.bonus
-
-        # self.pub_cmd_vel.publish(Twist())
+            reward += 120.
 
         return reward
 
@@ -187,7 +185,7 @@ class Env(object):
         self.goal_scat.set_offsets([self.goal_pose.position.x, self.goal_pose.position.y])
         self.pos_scat.set_offsets([self.position.x, self.position.y])
         plt.draw()
-        plt.pause(0.001)
+        plt.pause(0.0001)
 
     def set_target(self):
         self.goal_pose.position.x = random.uniform(*self.goal_range["x"])
