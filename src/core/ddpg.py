@@ -13,10 +13,10 @@ REPLAY_START_SIZE = 10000
 BATCH_SIZE = 128
 GAMMA = 0.99
 
-model_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'model', 'new_odom')
 
 class DDPG:
-    def __init__(self, env, state_dim, action_dim):
+    def __init__(self, model, env, state_dim, action_dim):
+        self.model_dir = model
         self.name = 'DDPG'
         self.environment = env
         self.time_step = 0
@@ -35,16 +35,16 @@ class DDPG:
 
     def _load_network(self):
         self.saver = tf.train.Saver(save_relative_paths=True, max_to_keep=5)
-        checkpoint = tf.train.get_checkpoint_state(model_dir)
-        if checkpoint and checkpoint.model_checkpoint_path:
+        checkpoint = tf.train.get_checkpoint_state(self.model_dir)
+        if checkpoint is not None and checkpoint.model_checkpoint_path:
             self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
-            print("Successfully loaded network")
         else:
-            print("Could not find old network weights")
+            self.saver.restore(self.sess, self.model_dir)
+        print("Successfully loaded network")
 
     def _save_network(self, time_step):
         print('save DDPG network...', time_step)
-        path = os.path.join(model_dir, "DDPG")
+        path = os.path.join(self.model_dir, "DDPG")
         self.saver.save(self.sess, path, global_step=time_step)
 
     def train(self):

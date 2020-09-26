@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import os
 import random
 
@@ -10,13 +10,13 @@ from environment import Env
 
 
 class SimEnv(Env, Gazebo):
-    def __init__(self, is_training, is_hard=True):
+    def __init__(self, is_training, is_obstacle=True):
         Env.__init__(self, is_training)
         Gazebo.__init__(self)
-        self.is_hard = is_hard
+        self.is_obstacle = is_obstacle
         spp = self.get_physics_properties()
         self.set_physics_properties(time_step=spp.time_step,
-                                    max_update_rate=5000.0,
+                                    max_update_rate=0.0,
                                     gravity=spp.gravity,
                                     ode_config=spp.ode_config)
         self._spawn_models()
@@ -28,7 +28,7 @@ class SimEnv(Env, Gazebo):
             goal_sdf = f.read()
         self.spawn_sdf_model("target", goal_sdf, "target", self.goal_pose, 'world')
         # Spawn obstacle boxes
-        if self.is_hard:
+        if self.is_obstacle:
             self._spawn_obs(model_dir)
 
     def _spawn_obs(self, model_dir):
@@ -73,12 +73,11 @@ class SimEnv(Env, Gazebo):
     def common_reset(self):
         # Set the target
         self.set_target()
-        if self.is_hard:
+        if self.is_obstacle:
             self.set_obstacle()
         # First step we set current distance as past distance
         self.past_distance = self._get_distance()
 
     def reset(self):
         self.reset_world()
-        # self.reset_simulation()
         return super(SimEnv, self).reset()
